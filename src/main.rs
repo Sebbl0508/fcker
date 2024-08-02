@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::{stdin, stdout, Read, Write}, time::{Duration, Instant}};
+use std::io::{stdin, stdout, Read, Write};
 
 pub static VALID_SOURCE_CHAR: &[char] = &['>', '<', '+', '-', '.', ',', '[', ']'];
 
@@ -22,6 +22,7 @@ enum Token {
     JumpBackward,
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug)]
 struct CPU {
     // instruction pointer
@@ -34,12 +35,11 @@ struct CPU {
 
 fn main() {
     let file = std::env::args()
-        .skip(1)
-        .next()
+        .nth(1)
         .expect("couldn't get first argument");
 
     let file_text =
-        std::fs::read_to_string(&file).expect(&format!("couldn't read file '{}'", &file));
+        std::fs::read_to_string(&file).unwrap_or_else(|_| panic!("couldn't read file '{}'", &file));
 
     let source_tokens = tokenize_source(file_text);
 

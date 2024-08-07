@@ -17,9 +17,9 @@ enum Token {
     /// ','
     GetInput,
     /// '['
-    JumpForward,
+    JumpForward(usize),
     /// ']'
-    JumpBackward,
+    JumpBackward(usize),
 }
 
 #[allow(clippy::upper_case_acronyms)]
@@ -53,10 +53,21 @@ where
 {
     let input: String = input.into();
 
-    input
+    let mut tokens: Vec<Token> = input
         .chars()
         .filter_map(|c| Token::try_from(c).ok())
-        .collect()
+        .collect();
+
+    // precompute matching bracket indices
+    for i in 0..tokens.len() {
+        let mut token = tokens[i];
+        if let Token::JumpForward(idx) | Token::JumpBackward(idx) = &mut token {
+            *idx = find_matching_arm_idx(&tokens, i);
+        }
+        tokens[i] = token;
+    }
+
+    tokens
 }
 
 impl CPU {
@@ -85,8 +96,8 @@ impl CPU {
                 Token::DecValue => self.execute_dec_value(),
                 Token::Output => self.execute_output(),
                 Token::GetInput => self.execute_get_input(),
-                Token::JumpForward => self.execute_jump_forward(),
-                Token::JumpBackward => self.execute_jump_backward(),
+                Token::JumpForward(idx) => self.execute_jump_forward(idx),
+                Token::JumpBackward(idx) => self.execute_jump_backward(idx),
             }
 
             // Some instruction doesn't want the instruction pointer
@@ -141,57 +152,57 @@ impl CPU {
         }
     }
 
-    fn execute_jump_forward(&mut self) {
+    fn execute_jump_forward(&mut self, idx: usize) {
         if self.memory[self.dp] != 0 {
             return;
         }
 
-        self.ip = self.find_matching_arm_idx();
+        self.ip = idx;
         self.prevent_ip_inc = true;
     }
 
-    fn execute_jump_backward(&mut self) {
+    fn execute_jump_backward(&mut self, idx: usize) {
         if self.memory[self.dp] == 0 {
             return;
         }
 
-        self.ip = self.find_matching_arm_idx();
+        self.ip = idx;
         self.prevent_ip_inc = true;
     }
+}
 
-    fn find_matching_arm_idx(&mut self) -> usize {
-        let forward = match self.code[self.ip] {
-            Token::JumpForward => true,
-            Token::JumpBackward => false,
-            t => panic!("can't find matching arm for instruction '{t:?}'"),
-        };
+fn find_matching_arm_idx(code: &[Token], idx: usize) -> usize {
+    let forward = match code[idx] {
+        Token::JumpForward(_) => true,
+        Token::JumpBackward(_) => false,
+        t => panic!("can't find matching arm for instruction '{t:?}'"),
+    };
 
-        let mut unmatched_brackets = 1;
-        let mut tmp_ip = self.ip;
-        loop {
-            if forward {
-                tmp_ip += 1;
-            } else {
-                tmp_ip -= 1;
-            }
+    let mut unmatched_brackets = 1;
+    let mut tmp_ip = idx;
+    loop {
+        if forward {
+            tmp_ip += 1;
+        } else {
+            tmp_ip -= 1;
+        }
 
-            if tmp_ip >= self.code.len() {
-                panic!("UNMATCHED BRACKET!");
-            }
+        if tmp_ip >= code.len() {
+            panic!("UNMATCHED BRACKET!");
+        }
 
-            let inst = self.code[tmp_ip];
+        let inst = code[tmp_ip];
 
-            match inst {
-                Token::JumpForward if forward => unmatched_brackets += 1,
-                Token::JumpBackward if !forward => unmatched_brackets += 1,
-                Token::JumpForward if !forward => unmatched_brackets -= 1,
-                Token::JumpBackward if forward => unmatched_brackets -= 1,
-                _ => {}
-            }
+        match inst {
+            Token::JumpForward(_) if forward => unmatched_brackets += 1,
+            Token::JumpBackward(_) if !forward => unmatched_brackets += 1,
+            Token::JumpForward(_) if !forward => unmatched_brackets -= 1,
+            Token::JumpBackward(_) if forward => unmatched_brackets -= 1,
+            _ => {}
+        }
 
-            if unmatched_brackets == 0 {
-                return tmp_ip;
-            }
+        if unmatched_brackets == 0 {
+            return tmp_ip;
         }
     }
 }
@@ -207,8 +218,8 @@ impl TryFrom<char> for Token {
             '-' => Ok(Token::DecValue),
             '.' => Ok(Token::Output),
             ',' => Ok(Token::GetInput),
-            '[' => Ok(Token::JumpForward),
-            ']' => Ok(Token::JumpBackward),
+            '[' => Ok(Token::JumpForward(usize::MAX)),
+            ']' => Ok(Token::JumpBackward(usize::MAX)),
             c => Err(c),
         }
     }
